@@ -260,8 +260,8 @@ def analyze(cron_dir: Path, days: int = 14, now: datetime | None = None) -> dict
     reasons: dict[str, set[str]] = defaultdict(set)
     for a, b, ratio in _similar_pairs(enabled):
         groups.union(a.id, b.id)
-        reasons[a.id].add(f"prompt ~{ratio:.0%} like {b.label}")
-        reasons[b.id].add(f"prompt ~{ratio:.0%} like {a.label}")
+        reasons[a.id].add(f"prompt ~{ratio:.0%} like {b.name or b.id}")
+        reasons[b.id].add(f"prompt ~{ratio:.0%} like {a.name or a.id}")
     by_role: dict[tuple[tuple[str, ...], str], list[Job]] = defaultdict(list)
     for j in enabled:
         if j.skills and not j.no_agent:
