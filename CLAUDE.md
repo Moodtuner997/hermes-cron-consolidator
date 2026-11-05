@@ -9,7 +9,8 @@ chantier : `.work/HANDOFF-hackathon-hermes.md` à la racine du parc.
 - Chaque modification passe `python -m pytest tests -q`, puis `hermes plugins validate .`.
 - README, PR et textes publics en anglais ; commits en français, format conventionnel.
 - Jamais de données réelles dans le dépôt : la démo vient de `tests/make_demo_profile.py` (noms et prompts inventés).
-  Les profils Hermes de Théo (serveur Hostinger) se lisent par copie temporaire, supprimée après l'essai.
+  Les profils Hermes de Théo se lisent par copie temporaire, supprimée après l'essai (essai du 5/11 : copie du serveur
+  Hostinger arrêtée au 28/10 ; l'état courant des profils est sur l'A1, `~hermes/.hermes`, après le ménage du 4/11).
 - `platforms:` du catalogue = ce qui est réellement testé.
 
 ## Pièges

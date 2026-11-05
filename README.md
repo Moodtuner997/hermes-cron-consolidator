@@ -88,7 +88,7 @@ consolidation, it does not price, diagnose or repair. They compose.
 
 ## What real data looked like
 
-On a real deployment of three profiles (42 enabled jobs, mostly scripts rather than prompts) it found no near-duplicate
+On a snapshot of a real deployment (three profiles, 42 enabled jobs, mostly scripts rather than prompts) it found no near-duplicate
 prompt, one genuine merge (the same hook-check script scheduled twice, once for late October and once for early
 November) and two groups of jobs sharing a minute, six jobs in all. A list of mostly distinct jobs gets a short plan: the
 tool reports what is there and does not invent savings.
