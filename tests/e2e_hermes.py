@@ -6,7 +6,8 @@ Run with the Hermes interpreter and a throwaway HERMES_HOME in which the plugin 
 
 It loads the plugin through Hermes' own discovery, runs ``/cron-consolidator`` through the registered command
 handler and ``hermes cron-consolidator`` through the real CLI parser, on the synthetic profile from
-``make_demo_profile.py``, and checks that neither route changes a byte of the profile's ``cron/`` folder.
+``make_demo_profile.py`` plus a failed run written by Hermes' own execution ledger (WAL mode), and checks that
+neither route changes, adds or removes a file of the profile's ``cron/`` folder.
 """
 
 from __future__ import annotations
@@ -42,9 +43,17 @@ def snapshot(folder: Path) -> dict[str, str]:
 home = Path(os.environ["HERMES_HOME"])
 make_demo_profile.build(home)
 cron = home / "cron"
+
+# A failed run of the demo's "rates" job, written by Hermes' own ledger so the real schema and journal mode are used.
+import cron.executions as executions  # noqa: E402
+
+executions.EXECUTIONS_FILE = cron / "executions.db"
+attempt = executions.create_execution("00000000000c", source="e2e")
+executions.finish_execution(attempt["id"], success=False, error="HTTP 502 from the exchange-rate API")
 before = snapshot(cron)
-check("the demo profile holds jobs.json and usage_audit.jsonl", sorted(before) == ["jobs.json", "usage_audit.jsonl"],
-      repr(sorted(before)))
+print("profile cron/ before:", sorted(before))
+check("the profile holds jobs.json, usage_audit.jsonl and Hermes' executions.db",
+      {"jobs.json", "usage_audit.jsonl", "executions.db"} <= set(before), repr(sorted(before)))
 
 discover_plugins(force=True)
 mine = [p for p in get_plugin_manager().list_plugins() if p["name"] == "cron-consolidator"]
@@ -68,6 +77,8 @@ check("it names the failing job and the unconfirmed delivery",
 data = json.loads(slash("report --json --days 30", session_id="e2e-session"))
 check("--json --days gives the same plan as data", data["window_days"] == 30 and data["jobs"]["enabled"] == 14
       and data["after_merge"] == 9 and len(data["merge_candidates"]) == 3, json.dumps(data)[:300])
+check("the failed run in Hermes' ledger is counted for the failing job",
+      [f["failed_runs_in_window"] for f in data["failing"]] == [1], json.dumps(data["failing"])[:300])
 check("a bad argument is refused with the help text", "unknown argument" in slash("report --apply"))
 
 hermes_main = str(Path(hermes_cli.__file__).resolve().parent / "main.py")
@@ -79,15 +90,18 @@ try:
     from_cli = json.loads(shell.stdout[shell.stdout.index("{"):])
 except ValueError:
     from_cli = {}
-check("the CLI route returns the same plan as JSON", from_cli.get("after_merge") == 9
-      and from_cli.get("jobs", {}).get("enabled") == 14, shell.stdout[:300])
+check("the CLI route returns the same plan as JSON, ledger count included", from_cli.get("after_merge") == 9
+      and from_cli.get("jobs", {}).get("enabled") == 14
+      and [f["failed_runs_in_window"] for f in from_cli.get("failing", [])] == [1], shell.stdout[:300])
 shell = subprocess.run([sys.executable, hermes_main, "cron-consolidator", "report", "--days", "0"],
                        capture_output=True, text=True, encoding="utf-8", timeout=180, env=os.environ.copy())
 check("the CLI route reports a bad option as text", "--days needs a positive number" in shell.stdout, shell.stdout[:300])
 
 after = snapshot(cron)
 changed = sorted(set(before) ^ set(after)) + sorted(k for k in before if k in after and before[k] != after[k])
-check("neither route touched the profile's cron folder", not changed, f"changed or new: {changed}")
+print("profile cron/ after: ", sorted(after))
+check("neither route changed, added or removed a file in the profile's cron folder", not changed,
+      f"changed or new: {changed}")
 
 print("\nFAILED: " + ", ".join(failures) if failures else "\nAll checks passed")
 sys.exit(1 if failures else 0)
