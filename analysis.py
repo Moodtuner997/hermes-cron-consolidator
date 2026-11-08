@@ -136,6 +136,20 @@ def load_usage(cron_dir: Path, days: int, now: datetime) -> dict[str, dict[str, 
     return dict(out)
 
 
+def _open_ledger(path: Path) -> sqlite3.Connection:
+    """Open ``executions.db`` so that nothing is left next to it.
+
+    Hermes keeps it in WAL mode, and a plain ``mode=ro`` open creates ``-wal`` and ``-shm`` when they are absent
+    (Hermes stopped, a copied profile). A WAL file with no ``-wal`` beside it has no unflushed pages, so it is
+    opened ``immutable``; with a ``-wal`` (Hermes running) ``mode=ro`` is kept so recent rows are seen.
+    ``as_uri`` escapes ``#``, ``%`` and spaces, which a hand-built URI does not: a ``#`` would cut the query off.
+    """
+    with path.open("rb") as fh:
+        wal_mode = fh.read(20)[18:19] == b"\x02"
+    mode = "immutable=1" if wal_mode and not path.with_name(path.name + "-wal").exists() else "mode=ro"
+    return sqlite3.connect(f"{path.resolve().as_uri()}?{mode}", uri=True, timeout=2)
+
+
 def load_failed_runs(cron_dir: Path, days: int, now: datetime) -> dict[str, int]:
     """Failed and missed executions per job from ``executions.db`` (opened read-only)."""
     path = cron_dir / "executions.db"
@@ -143,14 +157,14 @@ def load_failed_runs(cron_dir: Path, days: int, now: datetime) -> dict[str, int]
         return {}
     cutoff = (now - timedelta(days=days)).isoformat()
     try:
-        con = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=2)
+        con = _open_ledger(path)
         try:
             rows = con.execute(
                 "SELECT job_id, COUNT(*) FROM executions WHERE status IN ('failed','missed') "
                 "AND claimed_at >= ? GROUP BY job_id", (cutoff,)).fetchall()
         finally:
             con.close()
-    except sqlite3.Error:
+    except (sqlite3.Error, OSError):
         return {}
     return {str(j): int(n) for j, n in rows}
 
