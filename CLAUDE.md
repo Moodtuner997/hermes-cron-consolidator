@@ -10,7 +10,8 @@ chantier : `.work/HANDOFF-hackathon-hermes.md` à la racine du parc.
 - Chaque modification passe `python -m pytest tests -q` (38 tests, sans Hermes), `hermes plugins validate .`, puis
   `tests/e2e_hermes.py` avec l'interpréteur de Hermes (dans un `HERMES_HOME` jetable : un dossier avec `config.yaml` qui
   active le plugin et une copie du plugin). La CI (`.github/workflows/ci.yml`, runners GitHub : ce dépôt est public)
-  fait les trois sur ubuntu, windows et macos-latest, Hermes v0.22.7 installé par `uv sync --locked`.
+  fait les trois sur ubuntu, windows et macos-latest, avec Hermes v0.22.7 puis v0.23.0 (celui de l'A1), chacun installé par
+  `uv sync --locked --python 3.14`.
 - README, PR et textes publics en anglais ; commits en français, format conventionnel.
 - Jamais de données réelles dans le dépôt : la démo vient de `tests/make_demo_profile.py` (noms et prompts inventés).
   Les profils Hermes de Théo se lisent par copie temporaire, supprimée après l'essai (essai du 5/11 : copie du serveur
