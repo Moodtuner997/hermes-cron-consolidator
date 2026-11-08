@@ -7,7 +7,7 @@ chantier : `.work/HANDOFF-hackathon-hermes.md` à la racine du parc.
 - Lecture seule, toujours : le plugin n'écrit rien dans le profil et n'applique aucune fusion (pas d'option `--apply`).
   Un fichier ouvert en lecture seule n'est pas pour autant sans effet : voir le piège `executions.db` (0.1.1).
 - Aucun hook, outil ni middleware : seulement `register_command` et `register_cli_command`.
-- Chaque modification passe `python -m pytest tests -q` (59 tests, sans Hermes), `hermes plugins validate .`, puis
+- Chaque modification passe `python -m pytest tests -q` (93 tests, sans Hermes), `hermes plugins validate .`, puis
   `tests/e2e_hermes.py` avec l'interpréteur de Hermes (dans un `HERMES_HOME` jetable : un dossier avec `config.yaml` qui
   active le plugin et une copie du plugin). La CI (`.github/workflows/ci.yml`, runners GitHub : ce dépôt est public)
   fait les trois sur ubuntu, windows et macos-latest, avec Hermes v0.22.7 puis v0.23.0 (celui de l'A1), chacun installé par
@@ -34,10 +34,12 @@ chantier : `.work/HANDOFF-hackathon-hermes.md` à la racine du parc.
   à côté, en `mode=ro` sinon, avec une URI faite par `Path.as_uri()` (un `#` dans le chemin coupait la requête et SQLite
   ouvrait le fichier tronqué en écriture). `tests/test_ledger.py` et l'essai réel comparent le dossier `cron/` entier.
 - Le catalogue pointe encore sur la 0.1.0 (`52acc397`) : la phrase « writes nothing » de sa description reste vraie à une
-  exception près tant qu'une PR de catalogue n'a pas re-épinglé la 0.1.2 (acte de Théo).
+  exception près tant qu'une PR de catalogue n'a pas re-épinglé la 0.1.3 (acte de Théo).
 - Chat et shell ne sont pas la même porte (0.1.2, ticket 6) : `report.run(..., from_chat=True)` est ce que `/cron-consolidator`
   appelle ; il refuse `--home`, n'imprime aucun chemin du serveur (messages et JSON) et n'accepte en `--profile` qu'un nom
-  (règle d'identifiant de Hermes `^[a-z0-9][a-z0-9_-]{0,63}$`). Le shell garde `--home` et les chemins. Sur la CLI de Hermes,
+  (règle d'identifiant de Hermes `^[a-z0-9][a-z0-9_-]{0,63}$`) ; tout mot du dernier message d'erreur d'une tâche qui contient
+  `/` ou `\` y devient `<path>` (Hermes y écrit des chemins absolus, relevé par la relecture indépendante de la 0.1.2, corrigé en
+  0.1.3). `--days` : entier ASCII de 1 à 3650. Le shell garde `--home` et les chemins. Sur la CLI de Hermes,
   `--profile` est d'abord pris par Hermes lui-même (« Profile 'x' does not exist ») : seul `/cron-consolidator --profile` atteint le plugin.
 - Un `executions.db` illisible n'est plus muet : `analysis.read_failed_runs` rend la raison, `analyze` la met dans `warnings`
   (jamais le chemin) et `render` l'affiche sous « Warnings ». `load_failed_runs` reste la forme sans raison.

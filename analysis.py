@@ -88,7 +88,7 @@ def _job_from(raw: dict[str, Any]) -> Job | None:
         display=str(raw.get("schedule_display") or sched.get("expr") or kind),
         created_at=str(raw.get("created_at") or ""),
         failure_streak=int(raw.get("failure_streak") or 0),
-        last_error=raw.get("last_error"),
+        last_error=str(raw["last_error"]) if raw.get("last_error") else None,
         unverified=bool(raw.get("last_delivery_unverified")),
         timing=timing,
         fires_per_day=per_day,
@@ -134,6 +134,11 @@ def load_usage(cron_dir: Path, days: int, now: datetime) -> dict[str, dict[str, 
             u["silent"] += 1 if rec.get("response_silent") else 0
             u["errors"] += 1 if rec.get("error") else 0
     return dict(out)
+
+
+def _script_name(script: str) -> str:
+    """The file name of a job's script, whichever system wrote the path (``Path`` knows only the local separator)."""
+    return re.split(r"[\\/]", script.rstrip("\\/"))[-1] or script
 
 
 def _open_ledger(path: Path) -> sqlite3.Connection:
@@ -303,7 +308,7 @@ def analyze(cron_dir: Path, days: int = 14, now: datetime | None = None) -> dict
             for m in members[1:]:
                 groups.union(members[0].id, m.id)
             for m in members:
-                reasons[m.id].add(f"runs the same script ({Path(script).name})")
+                reasons[m.id].add(f"runs the same script ({_script_name(script)})")
 
     by_id = {j.id: j for j in enabled}
     merges = []
