@@ -97,6 +97,9 @@ tool reports what is there and does not invent savings.
 
 ```bash
 python -m pytest tests -q                         # 29 tests, no Hermes needed
+python tests/e2e_hermes.py                        # real Hermes, no model; see the header for the throwaway HERMES_HOME
 hermes plugins validate .                         # the catalog gate
 python tests/make_demo_profile.py /tmp/demo       # a synthetic profile, then: hermes cron-consolidator report --home /tmp/demo
 ```
+
+CI runs the tests, `hermes plugins validate` and the end-to-end check on Linux, Windows and macOS against Hermes `v0.22.7`.
