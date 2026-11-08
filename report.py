@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from . import analysis
+
+PROFILE_NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\Z")  # Hermes' own rule for a profile id: a name, never a path
 
 HELP = (
     "cron-consolidator: read-only plan for merging and rescheduling cron jobs.\n"
@@ -63,6 +66,9 @@ def render(result: dict[str, Any]) -> str:
     if result["untimed"]:
         out += ["", "## Schedules not understood (left out of the collision check)"]
         out += [f"- {_name(u)}: {u['schedule']}" for u in result["untimed"]]
+    if result.get("warnings"):
+        out += ["", "## Warnings"]
+        out += [f"- {w}" for w in result["warnings"]]
     return "\n".join(out)
 
 
@@ -75,15 +81,18 @@ def _cron_dir(hermes_home: Path, profile: str | None, home: str | None) -> Path:
     return hermes_home / "cron"
 
 
-def run(hermes_home: Path, raw_args: str = "", now: datetime | None = None) -> str:
+def run(hermes_home: Path, raw_args: str = "", now: datetime | None = None, *, from_chat: bool = False) -> str:
+    """The text answer. ``from_chat`` is the slash command: whoever types there is not at the machine, so ``--home``
+    (any folder) is refused and no message carries a path of the server; the shell keeps both."""
+    help_text = HELP.replace(" [--home PATH]", "") if from_chat else HELP
     try:
         tokens = shlex.split(raw_args, posix=False) if isinstance(raw_args, str) else list(raw_args)
     except ValueError as exc:
-        return f"cron-consolidator: {exc}\n{HELP}"
+        return f"cron-consolidator: {exc}\n{help_text}"
     if tokens and tokens[0] == "report":
         tokens = tokens[1:]
     elif tokens and tokens[0] in ("help", "-h", "--help"):
-        return HELP
+        return help_text
     as_json, days, profile, home = False, 14, None, None
     it = iter(tokens)
     for tok in it:
@@ -94,19 +103,32 @@ def run(hermes_home: Path, raw_args: str = "", now: datetime | None = None) -> s
             val = next(it, "").strip("\"'")
             if tok == "--days":
                 if not val.isdigit() or not int(val):
-                    return f"cron-consolidator: --days needs a positive number\n{HELP}"
+                    return f"cron-consolidator: --days needs a positive number\n{help_text}"
                 days = int(val)
             elif tok == "--profile":
+                if not PROFILE_NAME.match(val):
+                    return ("cron-consolidator: --profile takes a profile name (lowercase letters, digits, - and _), "
+                            f"not a path\n{help_text}")
                 profile = val
+            elif from_chat:
+                return "cron-consolidator: --home is available from the shell only: hermes cron-consolidator report --home PATH"
             else:
                 home = val
         else:
-            return f"cron-consolidator: unknown argument {tok!r}\n{HELP}"
+            return f"cron-consolidator: unknown argument {tok!r}\n{help_text}"
     cron_dir = _cron_dir(hermes_home, profile, home)
     if not (cron_dir / "jobs.json").is_file():
+        if from_chat:
+            which = f"profile {profile!r}" if profile else "this profile"
+            return f"cron-consolidator: no cron/jobs.json for {which} (is the profile name right?)"
         return f"cron-consolidator: no cron/jobs.json under {cron_dir.parent} (is the profile name right?)"
     try:
         result = analysis.analyze(cron_dir, days=days, now=now)
     except (OSError, ValueError) as exc:
+        if from_chat:  # an OSError's text carries the file name: say why, not where
+            why = (exc.strerror or type(exc).__name__) if isinstance(exc, OSError) else str(exc)
+            return f"cron-consolidator: could not read this profile's cron/jobs.json: {why}"
         return f"cron-consolidator: could not read {cron_dir / 'jobs.json'}: {exc}"
+    if from_chat:
+        result.pop("profile_cron_dir", None)
     return json.dumps(result, indent=2, ensure_ascii=False) if as_json else render(result)
