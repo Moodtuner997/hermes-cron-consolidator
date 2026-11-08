@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from cron_consolidator import analysis
 
 from conftest import NOW, job
@@ -32,6 +34,22 @@ def test_two_jobs_running_the_same_script_are_a_candidate(make_home):
     ])
     cand = run(home)["merge_candidates"]
     assert len(cand) == 1 and "runs the same script (hook-check.py)" in cand[0]["fold_in"][0]["why"]
+
+
+@pytest.mark.parametrize("script, name", [
+    ("C:\\Users\\alice\\scripts\\b.py", "b.py"), ("/home/alice/scripts/b.py", "b.py"), ("b.py", "b.py"),
+    ("a/b\\c.py", "c.py"), ("scripts/", "scripts"), ("\\\\fileserver\\share\\b.py", "b.py"), ("/", "/"),
+])
+def test_a_script_is_named_by_its_file_whichever_system_wrote_the_path(script, name):
+    assert analysis._script_name(script) == name
+
+
+def test_a_windows_script_path_read_anywhere_names_the_file_only(make_home):
+    path = "C:\\Users\\alice\\scripts\\hook-check.py"
+    home = make_home([job("j1", "a", "", "0 9 * * *", script=path, no_agent=True),
+                      job("j2", "b", "", "0 15 * * *", script=path, no_agent=True)])
+    why = run(home)["merge_candidates"][0]["fold_in"][0]["why"]
+    assert why == ["runs the same script (hook-check.py)"]
 
 
 def test_unrelated_prompts_are_left_alone(make_home):

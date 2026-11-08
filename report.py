@@ -12,7 +12,7 @@ from typing import Any
 from . import analysis
 
 PROFILE_NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\Z")  # Hermes' own rule for a profile id: a name, never a path
-PATHLIKE = re.compile(r"\S*[\\/]\S*")
+PATHLIKE = re.compile(r"\S*[\\/\u2215\u2216\u29f8\uff0f\uff3c]\S*")  # also the look-alike separators of other scripts
 MAX_DAYS = 3650  # ten years: far past any usage_audit.jsonl, well inside what datetime accepts
 
 HELP = (

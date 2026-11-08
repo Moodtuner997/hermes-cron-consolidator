@@ -77,15 +77,17 @@ is for the shell only: the slash command refuses it, so whoever types in a chat 
 - **Reads outside the plugin's own data:** `cron/jobs.json` (including prompts), `cron/usage_audit.jsonl` and
   `cron/executions.db` of the chosen profile, the last one opened read-only. `--profile` reads another profile's cron
   folder under the same Hermes root, from the slash command too: whoever can type `/cron-consolidator` in one profile's
-  chat can read the job plan of any other profile of that install.
+  chat can read the job plan of any other named profile of that install (those under `profiles/`).
 - **Writes:** none. The plugin creates no file and no table. `executions.db` is opened read-only, and as `immutable` when
   Hermes is not running, so SQLite leaves no `-wal`/`-shm` file beside it (0.1.0 did). Tests and the end-to-end check compare
-  the whole `cron/` folder before and after a run. While Hermes is running, or when a copied profile still has its `-wal` file
-  but not its `-shm`, SQLite itself creates or updates the `-shm` index for any reader; the database is never written.
+  the whole `cron/` folder before and after a run. While Hermes is running or has just stopped abruptly (its `-wal` and `-shm`
+  files are still there), or when a copied profile has its `-wal` file but not its `-shm`, SQLite itself updates or creates
+  the `-shm` index for any reader; the database is never written.
 - **What the report contains:** job names, ids, schedules, skills, delivery targets, and the first 160 characters of a
   failing job's last error. Prompt text is compared but never printed. From the slash command, the plugin's own messages
-  and the JSON carry no path of the machine, and any word of a job's last error that contains a `/` or `\` (Hermes writes
-  absolute paths there, for a missing script) is shown as `<path>`; the shell keeps the paths. If `cron/executions.db` exists but cannot be read, the plan
+  carry no path of the machine, and any word of a job's last error that contains a `/` or `\` (Hermes writes absolute
+  paths there, for a missing script) is shown as `<path>`. Job names and ids are shown as Hermes stored them (a job that
+  runs a script and has no name is named after the script, so such a name can hold a path). The shell keeps every path. If `cron/executions.db` exists but cannot be read, the plan
   says so under "Warnings" instead of showing no failed runs.
 - **Shell commands, background processes, credentials:** none. It registers no hook, no tool and no middleware, only
   a slash command and a CLI command.
@@ -107,7 +109,7 @@ tool reports what is there and does not invent savings.
 ## Development
 
 ```bash
-python -m pytest tests -q                         # 76 tests, no Hermes needed
+python -m pytest tests -q                         # 93 tests, no Hermes needed
 python tests/e2e_hermes.py                        # real Hermes, no model; see the header for the throwaway HERMES_HOME
 hermes plugins validate .                         # the catalog gate
 python tests/make_demo_profile.py /tmp/demo       # a synthetic profile, then: hermes cron-consolidator report --home /tmp/demo

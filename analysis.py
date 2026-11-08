@@ -88,7 +88,7 @@ def _job_from(raw: dict[str, Any]) -> Job | None:
         display=str(raw.get("schedule_display") or sched.get("expr") or kind),
         created_at=str(raw.get("created_at") or ""),
         failure_streak=int(raw.get("failure_streak") or 0),
-        last_error=raw.get("last_error"),
+        last_error=str(raw["last_error"]) if raw.get("last_error") else None,
         unverified=bool(raw.get("last_delivery_unverified")),
         timing=timing,
         fires_per_day=per_day,

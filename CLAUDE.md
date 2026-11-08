@@ -7,7 +7,7 @@ chantier : `.work/HANDOFF-hackathon-hermes.md` à la racine du parc.
 - Lecture seule, toujours : le plugin n'écrit rien dans le profil et n'applique aucune fusion (pas d'option `--apply`).
   Un fichier ouvert en lecture seule n'est pas pour autant sans effet : voir le piège `executions.db` (0.1.1).
 - Aucun hook, outil ni middleware : seulement `register_command` et `register_cli_command`.
-- Chaque modification passe `python -m pytest tests -q` (76 tests, sans Hermes), `hermes plugins validate .`, puis
+- Chaque modification passe `python -m pytest tests -q` (93 tests, sans Hermes), `hermes plugins validate .`, puis
   `tests/e2e_hermes.py` avec l'interpréteur de Hermes (dans un `HERMES_HOME` jetable : un dossier avec `config.yaml` qui
   active le plugin et une copie du plugin). La CI (`.github/workflows/ci.yml`, runners GitHub : ce dépôt est public)
   fait les trois sur ubuntu, windows et macos-latest, avec Hermes v0.22.7 puis v0.23.0 (celui de l'A1), chacun installé par

@@ -128,6 +128,31 @@ def test_a_chat_never_shows_a_path_from_a_jobs_last_error(make_home):
     assert "/home/alice/.hermes/profiles/work/scripts/backup.py" in report.run(home, "report", now=NOW)  # the shell keeps it
 
 
+@pytest.mark.parametrize("error", [
+    "Script not found: C:\\Users\\Alice\\.hermes\\scripts\\backup.py",
+    "Script not found: C:/Users/Alice/.hermes/scripts/backup.py",
+    "Script not found: \\\\fileserver\\share\\alice\\backup.py",
+    "Script not found: \u2215home\u2215alice\u2215backup.py",  # division slash
+    "Script not found: \uff0fhome\uff0falice\uff0fbackup.py",  # full-width solidus
+    "Script not found: C:\uff3cUsers\uff3calice\uff3cbackup.py",  # full-width reverse solidus
+], ids=["windows", "windows-forward", "unc", "division-slash", "fullwidth-solidus", "fullwidth-backslash"])
+def test_every_kind_of_path_in_a_last_error_is_masked_for_a_chat(make_home, error):
+    home = Path(make_home([failing_job(error)]))
+    for args in ("report", "report --json"):
+        out = report.run(home, args, now=NOW, from_chat=True)
+        assert "alice" not in out.lower() and "Users" not in out and "<path>" in out, out
+    assert "alice" in report.run(home, "report", now=NOW).lower()  # the shell keeps it
+
+
+@pytest.mark.parametrize("value", [["/home/alice/a.py", "b"], {"code": 1, "file": "/home/alice/a.py"}, 502])
+def test_a_last_error_that_is_not_a_string_is_shown_not_raised(make_home, value):
+    home = Path(make_home([failing_job(value)]))
+    for from_chat in (False, True):
+        out = report.run(home, "report", now=NOW, from_chat=from_chat)
+        assert "failures in a row; last error: " in out, out
+    assert "alice" not in report.run(home, "report", now=NOW, from_chat=True)
+
+
 def test_a_path_cut_by_the_160_character_limit_is_masked_too(make_home):
     error = "x" * 140 + " /home/alice/.hermes/profiles/work/scripts/backup.py"  # the limit falls inside the path
     home = Path(make_home([failing_job(error)]))
