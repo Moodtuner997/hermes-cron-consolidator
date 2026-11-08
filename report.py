@@ -12,6 +12,8 @@ from typing import Any
 from . import analysis
 
 PROFILE_NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\Z")  # Hermes' own rule for a profile id: a name, never a path
+PATHLIKE = re.compile(r"\S*[\\/]\S*")
+MAX_DAYS = 3650  # ten years: far past any usage_audit.jsonl, well inside what datetime accepts
 
 HELP = (
     "cron-consolidator: read-only plan for merging and rescheduling cron jobs.\n"
@@ -83,7 +85,8 @@ def _cron_dir(hermes_home: Path, profile: str | None, home: str | None) -> Path:
 
 def run(hermes_home: Path, raw_args: str = "", now: datetime | None = None, *, from_chat: bool = False) -> str:
     """The text answer. ``from_chat`` is the slash command: whoever types there is not at the machine, so ``--home``
-    (any folder) is refused and no message carries a path of the server; the shell keeps both."""
+    (any folder) is refused and no message carries a path of the server, a job's last error included (any word of it
+    holding a ``/`` or ``\\`` is shown as ``<path>``); the shell keeps both."""
     help_text = HELP.replace(" [--home PATH]", "") if from_chat else HELP
     try:
         tokens = shlex.split(raw_args, posix=False) if isinstance(raw_args, str) else list(raw_args)
@@ -102,8 +105,8 @@ def run(hermes_home: Path, raw_args: str = "", now: datetime | None = None, *, f
         elif tok in ("--days", "--profile", "--home"):
             val = next(it, "").strip("\"'")
             if tok == "--days":
-                if not val.isdigit() or not int(val):
-                    return f"cron-consolidator: --days needs a positive number\n{help_text}"
+                if not (val.isascii() and val.isdigit() and len(val) <= 4 and 1 <= int(val) <= MAX_DAYS):
+                    return f"cron-consolidator: --days needs a number from 1 to {MAX_DAYS}\n{help_text}"
                 days = int(val)
             elif tok == "--profile":
                 if not PROFILE_NAME.match(val):
@@ -131,4 +134,6 @@ def run(hermes_home: Path, raw_args: str = "", now: datetime | None = None, *, f
         return f"cron-consolidator: could not read {cron_dir / 'jobs.json'}: {exc}"
     if from_chat:
         result.pop("profile_cron_dir", None)
+        for failing in result["failing"]:  # Hermes writes absolute paths into a job's last error (a missing script)
+            failing["error"] = PATHLIKE.sub("<path>", failing["error"])
     return json.dumps(result, indent=2, ensure_ascii=False) if as_json else render(result)

@@ -114,6 +114,20 @@ def test_an_unreadable_ledger_is_said_in_the_plan(make_home, write):
     assert "## Warnings" in text and "cron/executions.db could not be read" in text
 
 
+def test_a_ledger_the_system_refuses_is_said_without_its_path(make_home, monkeypatch):
+    home = Path(make_home([job("j1", "a", "x" * 40, failure_streak=4)]))
+    make_ledger(home / "cron")
+
+    def refuse(path):  # what an OS permission error looks like: the text of str(exc) carries the file name
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(analysis, "_open_ledger", refuse)
+    for from_chat in (False, True):
+        data = json.loads(report.run(home, "report --json", now=NOW, from_chat=from_chat))
+        assert "(Permission denied)" in data["warnings"][0], data["warnings"]
+        assert str(home) not in data["warnings"][0] and home.as_posix() not in data["warnings"][0]
+
+
 def test_a_readable_or_missing_ledger_raises_no_warning(make_home):
     home = Path(make_home([job("j1", "a", "x" * 40)]))
     assert json.loads(report.run(home, "report --json", now=NOW))["warnings"] == []  # no ledger at all

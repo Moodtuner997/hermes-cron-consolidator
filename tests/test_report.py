@@ -109,6 +109,55 @@ def test_the_json_names_the_profile_folder_for_the_shell_only(make_home):
     assert "profile_cron_dir" not in json.loads(report.run(home, "--json", now=NOW, from_chat=True))
 
 
+LAST_ERROR = ("Script not found: /home/alice/.hermes/profiles/work/scripts/backup.py. Cron scripts are looked up only in "
+              "this profile's folder (/home/alice/.hermes/profiles/work/scripts) and C:\\Users\\Alice\\scripts\\b.py")
+
+
+def failing_job(error=LAST_ERROR):
+    return job("j1", "nightly-backup", "x" * 40, failure_streak=5, last_error=error)
+
+
+def test_a_chat_never_shows_a_path_from_a_jobs_last_error(make_home):
+    home = Path(make_home([failing_job()]))
+    chat_text = report.run(home, "report", now=NOW, from_chat=True)
+    chat_json = report.run(home, "report --json", now=NOW, from_chat=True)
+    for out in (chat_text, chat_json):
+        assert "/home/alice" not in out and "Users" not in out and ".hermes" not in out, out
+        assert "last error: Script not found: <path>" in chat_text and "<path>" in out
+    assert json.loads(chat_json)["failing"][0]["error"].startswith("Script not found: <path> Cron scripts")
+    assert "/home/alice/.hermes/profiles/work/scripts/backup.py" in report.run(home, "report", now=NOW)  # the shell keeps it
+
+
+def test_a_path_cut_by_the_160_character_limit_is_masked_too(make_home):
+    error = "x" * 140 + " /home/alice/.hermes/profiles/work/scripts/backup.py"  # the limit falls inside the path
+    home = Path(make_home([failing_job(error)]))
+    for args in ("report", "report --json"):
+        out = report.run(home, args, now=NOW, from_chat=True)
+        assert "/home" not in out and "alice" not in out, out
+        assert "<path>" in out
+
+
+@pytest.mark.parametrize("bad", ["²", "①", "٣", "0", "-1", "3651", "99999999999", "9" * 5000, "1.5", ""])
+def test_days_is_a_small_ascii_number_and_never_raises(tmp_path, bad):
+    for from_chat in (False, True):
+        out = report.run(tmp_path, ["--days", bad], from_chat=from_chat)
+        assert out.startswith("cron-consolidator: --days needs a number from 1 to 3650"), (bad[:12], out[:80])
+
+
+@pytest.mark.parametrize("good", ["1", "14", "3650"])
+def test_days_inside_the_bounds_still_works(make_home, good):
+    home = Path(make_home([job("j1", "only", "x" * 40)]))
+    assert f"last {good} days" in report.run(home, ["--days", good], now=NOW)
+
+
+def test_a_profile_name_with_a_trailing_newline_is_refused(tmp_path):
+    root = tmp_path / "root"
+    put_profile(root, "work")
+    for from_chat in (False, True):
+        out = report.run(root, ["--profile", "work\n"], from_chat=from_chat)
+        assert "takes a profile name" in out and "enabled job(s)" not in out
+
+
 def test_never_writes_into_the_profile(make_home):
     home = Path(make_home([job("j1", "a", DIGEST), job("j2", "b", DIGEST + " 2.")], audit=[("j1", 1, 10, 1)]))
     before = {p: (p.stat().st_mtime_ns, p.stat().st_size) for p in home.rglob("*") if p.is_file()}

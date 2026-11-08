@@ -44,6 +44,14 @@ home = Path(os.environ["HERMES_HOME"])
 make_demo_profile.build(home)
 cron = home / "cron"
 
+# Hermes writes absolute paths into a job's last error (a missing script, say): give the failing demo job one.
+jobs_file = cron / "jobs.json"
+doc = json.loads(jobs_file.read_text(encoding="utf-8"))
+for rec in doc["jobs"]:
+    if rec.get("name") == "rates":
+        rec["last_error"] = f"Script not found: {home / 'scripts' / 'rates.py'} (looked in {home})"
+jobs_file.write_text(json.dumps(doc), encoding="utf-8")
+
 # A failed run of the demo's "rates" job, written by Hermes' own ledger so the real schema and journal mode are used.
 import cron.executions as executions  # noqa: E402
 
@@ -74,7 +82,8 @@ check("it finds the three merges of the demo profile", "## Merge candidates (3)"
       text[:500])
 check("it names the failing job and the unconfirmed delivery",
       "`rates`: 5 failures in a row" in text and "## Deliveries never confirmed (1)" in text, text[-600:])
-data = json.loads(slash("report --json --days 30", session_id="e2e-session"))
+raw_json = slash("report --json --days 30", session_id="e2e-session")
+data = json.loads(raw_json)
 check("--json --days gives the same plan as data", data["window_days"] == 30 and data["jobs"]["enabled"] == 14
       and data["after_merge"] == 9 and len(data["merge_candidates"]) == 3, json.dumps(data)[:300])
 check("the failed run in Hermes' ledger is counted for the failing job",
@@ -89,6 +98,12 @@ check("a chat error names the profile and not the server path (0.1.2)",
       and str(home) not in chat_missing and home.as_posix() not in chat_missing, chat_missing)
 check("a chat's JSON carries no server path and no warning over a readable ledger (0.1.2)",
       "profile_cron_dir" not in data and data["warnings"] == [], json.dumps(data)[:300])
+leaks = (str(home), home.as_posix(), json.dumps(str(home))[1:-1])
+check("a chat shows <path> where a job's last error held a path, in the text and in the JSON (0.1.3)",
+      "last error: Script not found: <path>" in text and data["failing"][0]["error"].startswith("Script not found: <path>")
+      and not any(p in text or p in raw_json for p in leaks), text[-500:])
+check("a chat refuses a --days outside 1 to 3650 as text (0.1.3)",
+      all("--days needs a number from 1 to 3650" in slash(f"report --days {v}") for v in ("0", "3651", "99999999999")), "")
 
 hermes_main = str(Path(hermes_cli.__file__).resolve().parent / "main.py")
 shell = subprocess.run([sys.executable, hermes_main, "cron-consolidator", "report", "--json"],
@@ -103,6 +118,8 @@ check("the CLI route returns the same plan as JSON, ledger count included", from
       and from_cli.get("jobs", {}).get("enabled") == 14
       and [f["failed_runs_in_window"] for f in from_cli.get("failing", [])] == [1], shell.stdout[:300])
 check("the shell route keeps the profile folder in its JSON", from_cli.get("profile_cron_dir") == str(cron), repr(from_cli.get("profile_cron_dir")))
+check("the shell route keeps the paths of a job's last error (0.1.3)",
+      bool(from_cli.get("failing")) and str(home) in from_cli["failing"][0]["error"], repr(from_cli.get("failing"))[:300])
 shell = subprocess.run([sys.executable, hermes_main, "cron-consolidator", "report", "--json", "--home", str(home)],
                        capture_output=True, text=True, encoding="utf-8", timeout=180, env=os.environ.copy())
 check("the shell route still takes --home (0.1.2)", '"after_merge": 9' in shell.stdout, shell.stdout[:300])
@@ -113,7 +130,7 @@ check("the shell route says where it looked when a folder has no jobs.json (0.1.
       "no cron/jobs.json under" in shell.stdout and str(nowhere) in shell.stdout, shell.stdout[:300])
 shell = subprocess.run([sys.executable, hermes_main, "cron-consolidator", "report", "--days", "0"],
                        capture_output=True, text=True, encoding="utf-8", timeout=180, env=os.environ.copy())
-check("the CLI route reports a bad option as text", "--days needs a positive number" in shell.stdout, shell.stdout[:300])
+check("the CLI route reports a bad option as text", "--days needs a number from 1 to 3650" in shell.stdout, shell.stdout[:300])
 
 after = snapshot(cron)
 changed = sorted(set(before) ^ set(after)) + sorted(k for k in before if k in after and before[k] != after[k])

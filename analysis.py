@@ -136,6 +136,11 @@ def load_usage(cron_dir: Path, days: int, now: datetime) -> dict[str, dict[str, 
     return dict(out)
 
 
+def _script_name(script: str) -> str:
+    """The file name of a job's script, whichever system wrote the path (``Path`` knows only the local separator)."""
+    return re.split(r"[\\/]", script.rstrip("\\/"))[-1] or script
+
+
 def _open_ledger(path: Path) -> sqlite3.Connection:
     """Open ``executions.db`` so that nothing is left next to it.
 
@@ -303,7 +308,7 @@ def analyze(cron_dir: Path, days: int = 14, now: datetime | None = None) -> dict
             for m in members[1:]:
                 groups.union(members[0].id, m.id)
             for m in members:
-                reasons[m.id].add(f"runs the same script ({Path(script).name})")
+                reasons[m.id].add(f"runs the same script ({_script_name(script)})")
 
     by_id = {j.id: j for j in enabled}
     merges = []
