@@ -24,7 +24,7 @@ def _hermes_home() -> Path:
 
 
 def _slash(raw_args: str = "", **_: Any) -> str:
-    return report.run(_hermes_home(), raw_args)
+    return report.run(_hermes_home(), raw_args, from_chat=True)
 
 
 def _cli_setup(parser: Any) -> None:

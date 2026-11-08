@@ -90,6 +90,38 @@ def test_an_unreadable_ledger_gives_no_counts_instead_of_an_error(tmp_path):
     assert analysis.load_failed_runs(tmp_path / "cron", 14, NOW) == {}
 
 
+def make_other_database(path: Path):
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE something_else (a TEXT)")
+    con.commit()
+    con.close()
+
+
+@pytest.mark.parametrize("write", [
+    lambda p: p.write_bytes(b"not a database at all, just text"),
+    lambda p: p.write_bytes(b"SQLite format 3\x00" + b"\x00" * 40),
+    make_other_database,
+], ids=["text", "truncated header", "no executions table"])
+def test_an_unreadable_ledger_is_said_in_the_plan(make_home, write):
+    home = Path(make_home([job("j1", "a", "x" * 40, failure_streak=4)]))
+    write(home / "cron" / "executions.db")
+    data = json.loads(report.run(home, "report --json", now=NOW))
+    assert len(data["warnings"]) == 1 and data["warnings"][0].startswith("cron/executions.db could not be read (")
+    assert "failed-run counts are missing" in data["warnings"][0]
+    assert str(home) not in data["warnings"][0] and home.as_posix() not in data["warnings"][0]
+    assert data["failing"][0]["failed_runs_in_window"] == 0
+    text = report.run(home, "report", now=NOW)
+    assert "## Warnings" in text and "cron/executions.db could not be read" in text
+
+
+def test_a_readable_or_missing_ledger_raises_no_warning(make_home):
+    home = Path(make_home([job("j1", "a", "x" * 40)]))
+    assert json.loads(report.run(home, "report --json", now=NOW))["warnings"] == []  # no ledger at all
+    make_ledger(home / "cron")
+    data = json.loads(report.run(home, "report --json", now=NOW))
+    assert data["warnings"] == [] and "## Warnings" not in report.run(home, "report", now=NOW)
+
+
 def test_the_report_over_a_wal_profile_leaves_its_cron_folder_alone(make_home):
     home = Path(make_home([job("j1", "a", "x" * 40, failure_streak=4)], audit=[("j1", 1, 10, 1)]))
     make_ledger(home / "cron")

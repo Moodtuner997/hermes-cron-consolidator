@@ -2,6 +2,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from cron_consolidator import report
 
 from conftest import NOW, job
@@ -35,6 +37,76 @@ def test_clear_errors(tmp_path):
     assert "unknown argument" in report.run(tmp_path, "report --apply")
     assert "--days needs" in report.run(tmp_path, "report --days x")
     assert "read-only" in report.run(tmp_path, "help")
+
+
+def put_profile(root: Path, name=None) -> Path:
+    """A profile folder under ``root`` (``root`` itself for the default one) holding one job."""
+    base = root / "profiles" / name if name else root
+    (base / "cron").mkdir(parents=True)
+    (base / "cron" / "jobs.json").write_text(json.dumps({"jobs": [job("j1", "only", "x" * 40)]}), encoding="utf-8")
+    return base
+
+
+@pytest.mark.parametrize("bad", ["../../elsewhere", "..", ".", "a/b", "a\\b", "Work", "", "-x", "x" * 65, "C:\\temp"])
+def test_a_profile_is_a_name_not_a_path(tmp_path, bad):
+    root = tmp_path / "root"
+    put_profile(root, "work")
+    put_profile(tmp_path / "elsewhere")  # a folder outside profiles/ that a ../.. would reach
+    for from_chat in (False, True):
+        out = report.run(root, ["--profile", bad], from_chat=from_chat)
+        assert "takes a profile name" in out and "enabled job(s)" not in out
+
+
+@pytest.mark.parametrize("good", ["work", "w-1_x", "0", "x" * 64])
+def test_ordinary_profile_names_still_work(tmp_path, good):
+    root = tmp_path / "root"
+    put_profile(root, good)
+    assert "1 enabled job(s) of 1" in report.run(root, ["--profile", good], from_chat=True)
+
+
+def test_home_is_for_the_shell_only(tmp_path):
+    root = tmp_path / "root"
+    folder = put_profile(root, "work")
+    assert "1 enabled job(s) of 1" in report.run(Path("nowhere"), ["--home", str(folder)])  # the shell
+    chat = report.run(root, ["--home", str(folder)], from_chat=True)
+    assert "available from the shell only" in chat and "enabled job(s)" not in chat
+    assert "--home" not in report.run(root, "help", from_chat=True) and "--home" in report.run(root, "help")
+
+
+def seen_from(tmp_path, out: str) -> bool:
+    return str(tmp_path) in out or tmp_path.as_posix() in out
+
+
+def test_a_chat_is_told_what_went_wrong_but_not_where(tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    fresh = root / "fresh"
+    fresh.mkdir(parents=True)
+    broken = put_profile(root, "broken")
+    (broken / "cron" / "jobs.json").write_text("{not json", encoding="utf-8")
+    denied = put_profile(root, "denied")
+    cases = {
+        "a profile without jobs.json": (fresh, []),
+        "a wrong --profile": (root, ["--profile", "nope"]),
+        "a jobs.json that is not JSON": (broken, []),
+    }
+    for label, (home, args) in cases.items():
+        chat, shell = report.run(home, args, from_chat=True), report.run(home, args)
+        assert chat.startswith("cron-consolidator: ") and not seen_from(tmp_path, chat), (label, chat)
+        assert seen_from(tmp_path, shell), (label, shell)  # the shell keeps the path
+
+    def refuse(cron_dir, **_):
+        raise PermissionError(13, "Permission denied", str(cron_dir / "jobs.json"))
+
+    monkeypatch.setattr(report.analysis, "analyze", refuse)
+    chat, shell = report.run(denied, "", from_chat=True), report.run(denied, "")
+    assert "Permission denied" in chat and not seen_from(tmp_path, chat)
+    assert seen_from(tmp_path, shell)
+
+
+def test_the_json_names_the_profile_folder_for_the_shell_only(make_home):
+    home = Path(make_home([job("j1", "a", "x" * 40)]))
+    assert json.loads(report.run(home, "--json", now=NOW))["profile_cron_dir"] == str(home / "cron")
+    assert "profile_cron_dir" not in json.loads(report.run(home, "--json", now=NOW, from_chat=True))
 
 
 def test_never_writes_into_the_profile(make_home):

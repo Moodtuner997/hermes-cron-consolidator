@@ -150,11 +150,12 @@ def _open_ledger(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"{path.resolve().as_uri()}?{mode}", uri=True, timeout=2)
 
 
-def load_failed_runs(cron_dir: Path, days: int, now: datetime) -> dict[str, int]:
-    """Failed and missed executions per job from ``executions.db`` (opened read-only)."""
+def read_failed_runs(cron_dir: Path, days: int, now: datetime) -> tuple[dict[str, int], str | None]:
+    """Failed and missed executions per job from ``executions.db`` (opened read-only), and why the file could not be
+    read (``None`` when it is absent or read fine). The reason never carries the file's path."""
     path = cron_dir / "executions.db"
     if not path.is_file():
-        return {}
+        return {}, None
     cutoff = (now - timedelta(days=days)).isoformat()
     try:
         con = _open_ledger(path)
@@ -164,9 +165,15 @@ def load_failed_runs(cron_dir: Path, days: int, now: datetime) -> dict[str, int]
                 "AND claimed_at >= ? GROUP BY job_id", (cutoff,)).fetchall()
         finally:
             con.close()
-    except (sqlite3.Error, OSError):
-        return {}
-    return {str(j): int(n) for j, n in rows}
+    except sqlite3.Error as exc:
+        return {}, str(exc) or type(exc).__name__
+    except OSError as exc:
+        return {}, exc.strerror or type(exc).__name__
+    return {str(j): int(n) for j, n in rows}, None
+
+
+def load_failed_runs(cron_dir: Path, days: int, now: datetime) -> dict[str, int]:
+    return read_failed_runs(cron_dir, days, now)[0]
 
 
 class _Groups:
@@ -264,7 +271,7 @@ def analyze(cron_dir: Path, days: int = 14, now: datetime | None = None) -> dict
     now = now or datetime.now(timezone.utc)
     jobs = load_jobs(cron_dir)
     usage = load_usage(cron_dir, days, now)
-    failed_runs = load_failed_runs(cron_dir, days, now)
+    failed_runs, ledger_problem = read_failed_runs(cron_dir, days, now)
     for j in jobs:
         u = usage.get(j.id, {})
         j.usage = dict(u, window_days=days, failed_runs=failed_runs.get(j.id, 0))
@@ -329,4 +336,6 @@ def analyze(cron_dir: Path, days: int = 14, now: datetime | None = None) -> dict
                                 for j in enabled if j.unverified],
         "untimed": [{"id": j.id, "name": j.name, "schedule": j.display}
                     for j in enabled if j.kind == "cron" and not j.timing],
+        "warnings": ([f"cron/executions.db could not be read ({ledger_problem}): the failed-run counts are missing "
+                      "from this plan"] if ledger_problem else []),
     }

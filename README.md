@@ -67,6 +67,9 @@ hermes cron-consolidator report --json --days 30      # machine-readable, longer
 hermes cron-consolidator report --home /path/to/copy  # a copied HERMES_HOME, for a dry look
 ```
 
+`--profile` takes a profile name (lowercase letters, digits, `-` and `_`, as Hermes names them), never a path. `--home PATH`
+is for the shell only: the slash command refuses it, so whoever types in a chat cannot point the plugin at an arbitrary folder.
+
 ## Disclosure
 
 - **Network:** none.
@@ -78,7 +81,9 @@ hermes cron-consolidator report --home /path/to/copy  # a copied HERMES_HOME, fo
   the whole `cron/` folder before and after a run. While Hermes is running, SQLite itself updates its `-shm` index for any
   reader; the database is never written.
 - **What the report contains:** job names, ids, schedules, skills, delivery targets, and the first 160 characters of a
-  failing job's last error. Prompt text is compared but never printed.
+  failing job's last error. Prompt text is compared but never printed. From the slash command, no message and no JSON
+  field carries a path of the machine (the shell keeps them). If `cron/executions.db` exists but cannot be read, the plan
+  says so under "Warnings" instead of showing no failed runs.
 - **Shell commands, background processes, credentials:** none. It registers no hook, no tool and no middleware, only
   a slash command and a CLI command.
 - **Telemetry:** none.
@@ -99,7 +104,7 @@ tool reports what is there and does not invent savings.
 ## Development
 
 ```bash
-python -m pytest tests -q                         # 38 tests, no Hermes needed
+python -m pytest tests -q                         # 59 tests, no Hermes needed
 python tests/e2e_hermes.py                        # real Hermes, no model; see the header for the throwaway HERMES_HOME
 hermes plugins validate .                         # the catalog gate
 python tests/make_demo_profile.py /tmp/demo       # a synthetic profile, then: hermes cron-consolidator report --home /tmp/demo

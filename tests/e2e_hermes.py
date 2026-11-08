@@ -80,6 +80,15 @@ check("--json --days gives the same plan as data", data["window_days"] == 30 and
 check("the failed run in Hermes' ledger is counted for the failing job",
       [f["failed_runs_in_window"] for f in data["failing"]] == [1], json.dumps(data["failing"])[:300])
 check("a bad argument is refused with the help text", "unknown argument" in slash("report --apply"))
+check("a chat refuses --home and a profile that is a path (0.1.2)",
+      "available from the shell only" in slash(f"report --home {home}")
+      and "takes a profile name" in slash("report --profile ../.."), "")
+chat_missing = slash("report --profile nope")
+check("a chat error names the profile and not the server path (0.1.2)",
+      "no cron/jobs.json for profile 'nope'" in chat_missing
+      and str(home) not in chat_missing and home.as_posix() not in chat_missing, chat_missing)
+check("a chat's JSON carries no server path and no warning over a readable ledger (0.1.2)",
+      "profile_cron_dir" not in data and data["warnings"] == [], json.dumps(data)[:300])
 
 hermes_main = str(Path(hermes_cli.__file__).resolve().parent / "main.py")
 shell = subprocess.run([sys.executable, hermes_main, "cron-consolidator", "report", "--json"],
@@ -93,6 +102,15 @@ except ValueError:
 check("the CLI route returns the same plan as JSON, ledger count included", from_cli.get("after_merge") == 9
       and from_cli.get("jobs", {}).get("enabled") == 14
       and [f["failed_runs_in_window"] for f in from_cli.get("failing", [])] == [1], shell.stdout[:300])
+check("the shell route keeps the profile folder in its JSON", from_cli.get("profile_cron_dir") == str(cron), repr(from_cli.get("profile_cron_dir")))
+shell = subprocess.run([sys.executable, hermes_main, "cron-consolidator", "report", "--json", "--home", str(home)],
+                       capture_output=True, text=True, encoding="utf-8", timeout=180, env=os.environ.copy())
+check("the shell route still takes --home (0.1.2)", '"after_merge": 9' in shell.stdout, shell.stdout[:300])
+nowhere = home / "nowhere"  # Hermes' own parser takes --profile before the plugin sees it, so the shell route is tried with --home
+shell = subprocess.run([sys.executable, hermes_main, "cron-consolidator", "report", "--home", str(nowhere)],
+                       capture_output=True, text=True, encoding="utf-8", timeout=180, env=os.environ.copy())
+check("the shell route says where it looked when a folder has no jobs.json (0.1.2)",
+      "no cron/jobs.json under" in shell.stdout and str(nowhere) in shell.stdout, shell.stdout[:300])
 shell = subprocess.run([sys.executable, hermes_main, "cron-consolidator", "report", "--days", "0"],
                        capture_output=True, text=True, encoding="utf-8", timeout=180, env=os.environ.copy())
 check("the CLI route reports a bad option as text", "--days needs a positive number" in shell.stdout, shell.stdout[:300])
